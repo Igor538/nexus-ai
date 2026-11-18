@@ -2,6 +2,8 @@ import { defineConfig, devices } from "@playwright/test";
 
 const python = process.env.NEXUS_PYTHON ?? "python";
 const externalBaseURL = process.env.PLAYWRIGHT_BASE_URL;
+const testEncryptionKey =
+  process.env.CREDENTIALS_ENCRYPTION_KEY ?? "ztiFG5_pUbuT3hLqXyryoNiFnBxIs09hRlYMNxquoyw=";
 
 export default defineConfig({
   testDir: "./e2e",
@@ -31,6 +33,7 @@ export default defineConfig({
             EXECUTION_MODE: "inline",
             RATE_LIMIT_ENABLED: "false",
             SMTP_HOST: "",
+            CREDENTIALS_ENCRYPTION_KEY: testEncryptionKey,
           },
         },
         {
