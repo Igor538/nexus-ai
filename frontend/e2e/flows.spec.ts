@@ -110,7 +110,7 @@ test("configura webhook, rotaciona o segredo e agenda a execução", async ({ pa
   const rotate = page.getByRole("button", { name: /Rotacionar segredo/ });
   await expect(rotate).toBeEnabled();
   await rotate.click();
-  await expect(page.getByText(/Copie agora/)).toBeVisible();
+  await expect(page.locator(".webhook-secret")).toBeVisible();
   await page.locator(".modal__footer").getByRole("button", { name: "Fechar" }).click();
 
   await paletteFilter.fill("agendamento");
