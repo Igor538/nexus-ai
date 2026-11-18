@@ -20,6 +20,10 @@ async function registerAndLogin(page: Page, request: APIRequestContext, prefix: 
   return email;
 }
 
+async function expectToast(page: Page, text: string | RegExp) {
+  await expect(page.locator(".toast-stack .toast").filter({ hasText: text }).first()).toBeVisible();
+}
+
 async function createWorkflow(page: Page, name: string) {
   await page.goto("/workflows");
   await page.getByRole("button", { name: /Criar automa/ }).first().click();
@@ -57,7 +61,7 @@ test("registra, cria workflow, gera versão e restaura snapshot", async ({ page 
 
   await page.locator(".palette-item").first().click();
   await page.getByRole("button", { name: /Salvar/ }).click();
-  await expect(page.getByText("Fluxo salvo.")).toBeVisible();
+  await expectToast(page, "Fluxo salvo.");
 
   await page.getByRole("button", { name: /Histórico/ }).click();
   await expect(page.getByRole("heading", { name: "Histórico de versões" })).toBeVisible();
@@ -104,7 +108,7 @@ test("configura webhook, rotaciona o segredo e agenda a execução", async ({ pa
   await paletteFilter.fill("webhook");
   await page.locator(".editor__palette").getByRole("button", { name: "Webhook", exact: true }).click();
   await page.getByRole("button", { name: /Salvar/ }).click();
-  await expect(page.getByText(/Fluxo salvo/)).toBeVisible();
+  await expectToast(page, /Fluxo salvo/);
 
   await page.locator(".editor__actions").getByRole("button", { name: /Webhook/ }).click();
   const rotate = page.getByRole("button", { name: /Rotacionar segredo/ });
@@ -117,7 +121,7 @@ test("configura webhook, rotaciona o segredo e agenda a execução", async ({ pa
   await page.getByRole("button", { name: "Agendamento", exact: true }).click();
   await page.getByLabel("Cron").fill("*/15 * * * *");
   await page.getByRole("button", { name: /Salvar/ }).click();
-  await expect(page.getByText(/Fluxo salvo/)).toBeVisible();
+  await expectToast(page, /Fluxo salvo/);
 
   await page.goto("/");
   const scheduled = page.locator(".schedule-list li", { hasText: workflowName });
