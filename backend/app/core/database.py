@@ -1,24 +1,32 @@
-import os
+"""Database engine, session factory and declarative base."""
 
-from sqlalchemy import create_engine
-from sqlalchemy.orm import DeclarativeBase, sessionmaker
+from __future__ import annotations
 
-DATABASE_URL = os.getenv("DATABASE_URL")
+from collections.abc import Iterator
 
-if not DATABASE_URL:
-    raise RuntimeError("DATABASE_URL não foi configurada.")
+from sqlalchemy import JSON, create_engine
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
+from sqlalchemy.pool import StaticPool
 
+from app.core.config import settings
 
-engine = create_engine(
-    DATABASE_URL,
-    pool_pre_ping=True,
-)
+JSONType = JSON().with_variant(JSONB, "postgresql")
 
+_engine_kwargs: dict = {"pool_pre_ping": True, "future": True}
+if settings.database_url.startswith("sqlite"):
+    _engine_kwargs["connect_args"] = {"check_same_thread": False, "timeout": 30}
+    if ":memory:" in settings.database_url:
+        _engine_kwargs["poolclass"] = StaticPool
+
+engine = create_engine(settings.database_url, **_engine_kwargs)
 
 SessionLocal = sessionmaker(
     autocommit=False,
     autoflush=False,
     bind=engine,
+    expire_on_commit=False,
+    future=True,
 )
 
 
@@ -26,9 +34,8 @@ class Base(DeclarativeBase):
     pass
 
 
-def get_db():
+def get_db() -> Iterator[Session]:
     db = SessionLocal()
-
     try:
         yield db
     finally:

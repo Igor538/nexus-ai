@@ -15,6 +15,11 @@ venv/
 .coverage
 htmlcov/
 
+# Local databases
+*.db
+*.sqlite
+*.sqlite3
+
 # IDE
 .vscode/
 .idea/
@@ -30,3 +35,8 @@ Thumbs.db
 node_modules/
 dist/
 build/
+*.tsbuildinfo
+test-results/
+playwright-report/
+blob-report/
+.playwright/

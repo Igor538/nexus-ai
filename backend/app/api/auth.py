@@ -1,103 +1,196 @@
+"""Authentication, profile and password recovery endpoints."""
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from __future__ import annotations
+
+from datetime import datetime, timedelta, timezone
+
+from fastapi import APIRouter, Depends, Request, status
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user
+from app.core.config import settings
 from app.core.database import get_db
+from app.core.errors import ConflictError, NotFoundError, PermissionDeniedError, ValidationError
+from app.core.rate_limit import limiter
 from app.core.security import (
     create_access_token,
+    generate_secret,
     hash_password,
+    hash_token,
     verify_password,
 )
+from app.models.password_reset import PasswordResetToken
 from app.models.user import User
 from app.schemas.user import (
+    PasswordChange,
+    PasswordResetConfirm,
+    PasswordResetRequest,
     TokenResponse,
     UserCreate,
     UserLogin,
     UserResponse,
+    UserUpdate,
 )
+from app.services.mailer import email_configured, send_email
 
 router = APIRouter()
 
 
-@router.post(
-    "/register",
-    response_model=UserResponse,
-    status_code=status.HTTP_201_CREATED,
-)
-def register_user(
-    user_data: UserCreate,
-    db: Session = Depends(get_db),
-):
-    email = str(user_data.email).lower()
+def _client_ip(request: Request) -> str:
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
 
-    existing_user = db.scalar(
-        select(User).where(User.email == email)
-    )
 
-    if existing_user:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Este e-mail já está cadastrado.",
-        )
+@router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
+def register_user(user_data: UserCreate, request: Request, db: Session = Depends(get_db)):
+    limiter.hit("auth:register", _client_ip(request), settings.auth_rate_limit_per_minute)
+    email = str(user_data.email).lower().strip()
 
-    new_user = User(
+    if db.scalar(select(User).where(User.email == email)):
+        raise ConflictError("Este e-mail já está cadastrado.")
+
+    user = User(
         name=user_data.name.strip(),
         email=email,
         hashed_password=hash_password(user_data.password),
     )
-
     try:
-        db.add(new_user)
+        db.add(user)
         db.commit()
-        db.refresh(new_user)
-
-    except IntegrityError:
+        db.refresh(user)
+    except IntegrityError as exc:
         db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Este e-mail já está cadastrado.",
-        )
+        raise ConflictError("Este e-mail já está cadastrado.") from exc
 
-    return new_user
+    return user
 
 
 @router.post("/login", response_model=TokenResponse)
-def login_user(
-    login_data: UserLogin,
-    db: Session = Depends(get_db),
-):
-    email = str(login_data.email).lower()
+def login_user(login_data: UserLogin, request: Request, db: Session = Depends(get_db)):
+    limiter.hit("auth:login", _client_ip(request), settings.auth_rate_limit_per_minute)
+    email = str(login_data.email).lower().strip()
+    user = db.scalar(select(User).where(User.email == email))
 
-    user = db.scalar(
-        select(User).where(User.email == email)
-    )
-
-    if not user or not verify_password(
-        login_data.password,
-        user.hashed_password,
-    ):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="E-mail ou senha incorretos.",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
+    if not user or not verify_password(login_data.password, user.hashed_password):
+        raise PermissionDeniedError("E-mail ou senha incorretos.")
     if not user.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Esta conta está desativada.",
-        )
+        raise PermissionDeniedError("Esta conta está desativada.")
 
-    access_token = create_access_token(user.id)
+    user.last_login_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(user)
 
-    return TokenResponse(access_token=access_token)
+    return TokenResponse(
+        access_token=create_access_token(user.id),
+        expires_in=settings.access_token_expire_minutes * 60,
+        user=UserResponse.model_validate(user),
+    )
 
 
 @router.get("/me", response_model=UserResponse)
-def get_me(
+def get_me(current_user: User = Depends(get_current_user)):
+    return current_user
+
+
+@router.patch("/me", response_model=UserResponse)
+def update_me(
+    payload: UserUpdate,
+    db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    if payload.name is not None:
+        current_user.name = payload.name.strip()
+    if payload.email is not None:
+        email = str(payload.email).lower().strip()
+        if email != current_user.email and db.scalar(select(User).where(User.email == email)):
+            raise ConflictError("Este e-mail já está cadastrado.")
+        current_user.email = email
+    db.commit()
+    db.refresh(current_user)
     return current_user
+
+
+@router.post("/change-password", status_code=status.HTTP_204_NO_CONTENT)
+def change_password(
+    payload: PasswordChange,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    limiter.hit("auth:change-password", str(current_user.id), settings.auth_rate_limit_per_minute)
+    if not verify_password(payload.current_password, current_user.hashed_password):
+        raise PermissionDeniedError("Senha atual incorreta.")
+    current_user.hashed_password = hash_password(payload.new_password)
+    db.commit()
+    return None
+
+
+@router.post("/forgot-password")
+def forgot_password(
+    payload: PasswordResetRequest, request: Request, db: Session = Depends(get_db)
+):
+    limiter.hit(
+        "auth:forgot-password", _client_ip(request), settings.auth_rate_limit_per_minute
+    )
+    email = str(payload.email).lower().strip()
+    user = db.scalar(select(User).where(User.email == email))
+
+    response: dict[str, str] = {
+        "detail": "Se o e-mail existir, enviaremos instruções de recuperação."
+    }
+    if user is None:
+        return response
+
+    token = generate_secret(32)
+    reset = PasswordResetToken(
+        user_id=user.id,
+        token_hash=hash_token(token),
+        expires_at=datetime.now(timezone.utc)
+        + timedelta(minutes=settings.password_reset_expire_minutes),
+    )
+    db.add(reset)
+    db.commit()
+
+    reset_url = f"{settings.frontend_url.rstrip('/')}/reset-password?token={token}"
+    delivered = send_email(
+        to=user.email,
+        subject="Nexus AI — redefinição de senha",
+        text=(
+            "Recebemos um pedido para redefinir sua senha.\n\n"
+            f"Acesse o link (válido por {settings.password_reset_expire_minutes} minutos):\n"
+            f"{reset_url}\n\nSe não foi você, ignore este e-mail."
+        ),
+    )
+    if not delivered and not settings.is_production and not email_configured():
+        response["dev_token"] = token
+        response["detail"] = (
+            "SMTP não configurado: use o token de desenvolvimento para redefinir a senha."
+        )
+    return response
+
+
+@router.post("/reset-password")
+def reset_password(payload: PasswordResetConfirm, db: Session = Depends(get_db)):
+    token_hash = hash_token(payload.token)
+    reset = db.scalar(
+        select(PasswordResetToken).where(PasswordResetToken.token_hash == token_hash)
+    )
+    now = datetime.now(timezone.utc)
+    expires_at = reset.expires_at if reset is not None else None
+    if expires_at is not None and expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    if reset is None or reset.used_at is not None or expires_at < now:
+        raise ValidationError("Token inválido ou expirado.")
+
+    user = db.get(User, reset.user_id)
+    if user is None:
+        raise NotFoundError("Usuário não encontrado.")
+
+    user.hashed_password = hash_password(payload.new_password)
+    reset.used_at = now
+    db.commit()
+    return {"detail": "Senha redefinida com sucesso."}
