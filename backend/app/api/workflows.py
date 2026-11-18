@@ -19,6 +19,8 @@ from app.schemas.workflow import (
     Graph,
     WorkflowCreate,
     WorkflowDuplicateRequest,
+    WorkflowGenerateRequest,
+    WorkflowGenerateResponse,
     WorkflowResponse,
     WorkflowSummary,
     WorkflowUpdate,
@@ -27,6 +29,7 @@ from app.schemas.workflow import (
     WorkflowVersionDetail,
     WorkflowVersionSummary,
 )
+from app.services.ai.generator import generate_workflow_graph
 from app.services.executions import create_execution
 from app.services.nodes import all_nodes
 from app.services.nodes.registry import trigger_types
@@ -134,6 +137,29 @@ def validate_workflow_graph(
     return WorkflowValidationResponse(
         valid=not any(issue["severity"] == "error" for issue in issues),
         issues=[WorkflowValidationIssue(**issue) for issue in issues],
+    )
+
+
+@router.post("/generate", response_model=WorkflowGenerateResponse)
+async def generate_workflow(
+    payload: WorkflowGenerateRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    result = await generate_workflow_graph(
+        db,
+        user_id=current_user.id,
+        prompt=payload.prompt,
+        provider_name=payload.provider,
+        model=payload.model,
+    )
+    return WorkflowGenerateResponse(
+        graph=Graph(**result["graph"]),
+        issues=[WorkflowValidationIssue(**issue) for issue in result["issues"]],
+        provider=result["provider"],
+        model=result["model"],
+        provider_label=result.get("provider_label"),
+        explanation=result.get("explanation"),
     )
 
 

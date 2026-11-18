@@ -111,3 +111,18 @@ class WorkflowVersionSummary(BaseModel):
 
 class WorkflowVersionDetail(WorkflowVersionSummary):
     graph: Graph
+
+
+class WorkflowGenerateRequest(BaseModel):
+    prompt: str = Field(min_length=3, max_length=2000)
+    provider: str | None = Field(default=None, max_length=40)
+    model: str | None = Field(default=None, max_length=120)
+
+
+class WorkflowGenerateResponse(BaseModel):
+    graph: Graph
+    issues: list[WorkflowValidationIssue] = Field(default_factory=list)
+    provider: str
+    model: str
+    provider_label: str | None = None
+    explanation: str | None = None

@@ -209,6 +209,15 @@ export interface ValidationResult {
   issues: ValidationIssue[];
 }
 
+export interface GeneratedWorkflow {
+  graph: Graph;
+  issues: ValidationIssue[];
+  provider: string;
+  model: string;
+  provider_label: string | null;
+  explanation: string | null;
+}
+
 export interface Credential {
   id: number;
   name: string;

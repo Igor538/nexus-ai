@@ -7,6 +7,7 @@ import type {
   ExecutionDetail,
   ExecutionList,
   ExecutionSummary,
+  GeneratedWorkflow,
   Graph,
   LoginResponse,
   NodeCatalog,
@@ -130,6 +131,11 @@ export const api = {
     request<ExecutionSummary>(`/workflows/${id}/run`, { method: "POST", body: { input } }),
   validateWorkflow: (graph: Graph) =>
     request<ValidationResult>("/workflows/validate", { method: "POST", body: graph }),
+  generateWorkflow: (prompt: string, provider?: string, model?: string) =>
+    request<GeneratedWorkflow>("/workflows/generate", {
+      method: "POST",
+      body: { prompt, provider: provider || null, model: model || null },
+    }),
   duplicateWorkflow: (id: number, name?: string) =>
     request<Workflow>(`/workflows/${id}/duplicate`, {
       method: "POST",

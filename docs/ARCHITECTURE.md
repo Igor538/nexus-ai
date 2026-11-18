@@ -21,7 +21,7 @@ O frontend é uma SPA estática; em produção o nginx serve os assets e faz pro
 - `app/services`: regras de negócio — `workflow_service` (grafo, validação, normalização, redação), `executions` (ciclo de vida), `credentials` (Fernet), `webhooks` (segredo/HMAC), `scheduling` (cron com `croniter`), `expressions` (interpolação `{{ ... }}`), `mailer`.
 - `app/services/executor`: `engine.py` percorre o grafo; `context.py` mantém entradas, saídas por nó e variáveis.
 - `app/services/nodes`: catálogo extensível (`registry.py`) com `base.py` (contrato) e implementações `triggers`, `logic`, `actions`, `ai`.
-- `app/services/ai`: provedores (`gemini`, `openai`/compatíveis), registro, agente e controle de uso.
+- `app/services/ai`: provedores (`gemini`, `openai`/compatíveis), registro, agente, controle de uso e gerador de rascunho de fluxo (prompt → grafo normalizado com layout e issues de validação).
 - `app/worker`: `celery_app.py` e `tasks.py` (`run_workflow_task`, `scan_schedules_task`).
 - `app/core`: configuração (`pydantic-settings`), banco, segurança/JWT, cifra, logging, rate limit, cliente HTTP com guarda SSRF.
 
@@ -56,7 +56,7 @@ Webhooks: cada workflow tem token e segredo cifrado. A rota pública valida `x-w
 - `lib/api.ts`: cliente `fetch` com `API_BASE` (`VITE_API_URL` ou `/api/v1`), `ApiError` tipado e tratamento global de 401 (limpa sessão e redireciona para `/login`).
 - `lib/types.ts`: contratos espelhando os schemas Pydantic; `lib/utils.ts`: formatação, labels e mensagens.
 - `pages/AuthPage.tsx`, `ForgotPasswordPage.tsx` e `ResetPasswordPage.tsx`: login/cadastro e recuperação de senha (link por e-mail ou token de desenvolvimento quando não há SMTP).
-- `pages/WorkflowEditorPage.tsx`: React Flow com nó customizado (`nexus`), handles por output, paleta filtrável pelo catálogo da API, inspetor gerado a partir de `config_schema` (inclui `$defs`, enums, booleanos, listas e JSON), editor de casos do `logic_switch`, validação, ativação, execução, webhook (URL/segredo/rotação), organização automática do grafo e proteção contra sair com alterações não salvas.
+- `pages/WorkflowEditorPage.tsx`: React Flow com nó customizado (`nexus`), handles por output, paleta filtrável pelo catálogo da API, inspetor gerado a partir de `config_schema` (inclui `$defs`, enums, booleanos, listas e JSON), editor de casos do `logic_switch`, validação, ativação, execução, webhook (URL/segredo/rotação), geração de fluxo por IA (prompt + provedor/modelo), organização automática do grafo e proteção contra sair com alterações não salvas.
 - Estilos: `styles.css` com tokens (fundo escuro, âmbar/teal/violeta/coral), tipografia Bricolage Grotesque + Inter Tight + IBM Plex Mono, layout responsivo e overrides do React Flow.
 
 ## Produção

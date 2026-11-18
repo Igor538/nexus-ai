@@ -1,6 +1,6 @@
 # Nexus AI
 
-Plataforma de automação de workflows com IA: monte fluxos por nós, conecte gatilhos (manual, webhook, agendamento, evento), execute ações HTTP, notificações, lógica condicional e blocos de IA — com histórico de execuções, credenciais cifradas e webhooks assinados.
+Plataforma de automação de workflows com IA: monte fluxos por nós ou gere um rascunho a partir de uma descrição em linguagem natural, conecte gatilhos (manual, webhook, agendamento, evento), execute ações HTTP, notificações, lógica condicional e blocos de IA — com histórico de execuções, credenciais cifradas e webhooks assinados.
 
 ## Stack
 
@@ -22,14 +22,14 @@ backend/
     services/       regras de negócio, executor, nós, credenciais, webhooks
     worker/         Celery (execuções assíncronas e agendamentos)
   alembic/          migrações
-  tests/            suíte pytest (29 testes)
+  tests/            suíte pytest (34 testes)
 frontend/
   src/
     components/     shell, modais, badges, preview de grafo
     context/        autenticação e toasts
     lib/            cliente de API, tipos, utilitários, sessão
     pages/          dashboard, workflows, editor, execuções, credenciais, ajustes, login/recuperação de senha
-  e2e/              Playwright (cadastro, workflow, versões, reset de senha)
+  e2e/              Playwright (workflow/versões, reset de senha, webhook/agendamento, credenciais, gerador IA)
   nginx.conf        SPA fallback e proxy /api e /health -> api:8000
 docker-compose.yml  api, worker, beat, frontend, postgres, redis
 ```
@@ -156,11 +156,11 @@ As variáveis completas estão em `.env.example`. Destaques:
 Prefixo `/api/v1`. Principais grupos:
 
 - `auth`: registro, login, usuário atual, troca de senha e recuperação de senha (`/forgot-password`, `/reset-password`).
-- `workflows`: CRUD, validação, execução, duplicação, ativar/desativar, webhook (info e rotação de segredo) e histórico de versões do grafo (`/versions`, `/{version}`, `/{version}/restore`).
+- `workflows`: CRUD, validação, execução, duplicação, ativar/desativar, webhook (info e rotação de segredo), histórico de versões do grafo (`/versions`, `/{version}`, `/{version}/restore`) e geração de rascunho por IA (`POST /workflows/generate`).
 - `executions`: listagem com filtros, detalhe por nó e reprocessamento.
 - `credentials`: CRUD de credenciais cifradas.
 - `nodes`: catálogo de nós com `config_schema` para formulários dinâmicos.
-- `ai`: teste de provedores/modelos.
+- `ai`: teste de provedores/modelos e catálogo de provedores disponíveis.
 - `dashboard`, `notifications`, `health`.
 
 Webhooks públicos: `POST /api/v1/webhooks/{token}` aceita `x-webhook-secret` ou assinatura `x-nexus-signature` (HMAC), com limite de corpo configurável.

@@ -33,6 +33,7 @@ import {
   RotateCcw,
   Save,
   Settings2,
+  Sparkles,
   Trash2,
   Webhook,
 } from "lucide-react";
@@ -40,6 +41,7 @@ import { Modal } from "../components/Modal";
 import { useToast } from "../context/ToastContext";
 import { api } from "../lib/api";
 import type {
+  AIProviderList,
   Credential,
   Graph,
   GraphEdge,
@@ -572,6 +574,13 @@ export function WorkflowEditorPage() {
   const [versions, setVersions] = useState<WorkflowVersionSummary[]>([]);
   const [versionsLoading, setVersionsLoading] = useState(false);
   const [restoringVersion, setRestoringVersion] = useState<number | null>(null);
+  const [aiOpen, setAiOpen] = useState(false);
+  const [aiPrompt, setAiPrompt] = useState("");
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiError, setAiError] = useState("");
+  const [aiProviders, setAiProviders] = useState<AIProviderList | null>(null);
+  const [aiProvider, setAiProvider] = useState("");
+  const [aiModel, setAiModel] = useState("");
 
   const [nodes, setNodes, onNodesChange] = useNodesState<EditorNode>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
@@ -803,6 +812,8 @@ export function WorkflowEditorPage() {
       setEdges(updated.graph.edges.map(toFlowEdge));
       setDirty(false);
       setValidation(null);
+      const freshWebhook = await api.webhookInfo(updated.id).catch(() => null);
+      if (freshWebhook) setWebhook(freshWebhook);
       notify("success", "Fluxo salvo.");
     } catch (reason) {
       notify("error", getErrorMessage(reason));
@@ -867,6 +878,67 @@ export function WorkflowEditorPage() {
     setName(workflow.name);
     setDescription(workflow.description ?? "");
     setSettingsOpen(true);
+  }
+
+  function openGenerator() {
+    setAiOpen(true);
+    setAiError("");
+    if (aiProviders) return;
+    api
+      .aiProviders()
+      .then((list) => {
+        setAiProviders(list);
+        const preferred =
+          list.providers.find((item) => item.is_default && item.configured) ??
+          list.providers.find((item) => item.configured) ??
+          list.providers.find((item) => item.is_default) ??
+          list.providers[0];
+        if (preferred) {
+          setAiProvider(preferred.name);
+          setAiModel(preferred.default_model);
+        }
+      })
+      .catch((reason) => setAiError(getErrorMessage(reason)));
+  }
+
+  function chooseProvider(providerName: string) {
+    setAiProvider(providerName);
+    const provider = aiProviders?.providers.find((item) => item.name === providerName);
+    setAiModel(provider?.default_model ?? "");
+  }
+
+  async function generateGraph() {
+    const prompt = aiPrompt.trim();
+    if (prompt.length < 3) {
+      setAiError("Descreva a automação com pelo menos 3 caracteres.");
+      return;
+    }
+    setAiBusy(true);
+    setAiError("");
+    try {
+      const result = await api.generateWorkflow(
+        prompt,
+        aiProvider || undefined,
+        aiModel || undefined,
+      );
+      setNodes(result.graph.nodes.map((node) => toFlowNode(node, catalogMap)));
+      setEdges(result.graph.edges.map(toFlowEdge));
+      setSelectedId(null);
+      setDirty(true);
+      setValidation({
+        valid: !result.issues.some((issue) => issue.severity === "error"),
+        issues: result.issues,
+      });
+      setAiOpen(false);
+      notify(
+        "success",
+        `Fluxo gerado por ${result.provider_label ?? result.provider}. Revise e salve.`,
+      );
+    } catch (reason) {
+      setAiError(getErrorMessage(reason));
+    } finally {
+      setAiBusy(false);
+    }
   }
 
   async function saveSettings() {
@@ -973,6 +1045,9 @@ export function WorkflowEditorPage() {
   const schema = entry?.config_schema;
   const switchCases = selectedNode ? readCases(selectedNode.data.config) : [];
   const query = paletteSearch.trim().toLowerCase();
+  const selectedProvider = aiProviders?.providers.find((item) => item.name === aiProvider);
+  const aiModels = selectedProvider?.models ?? [];
+  const aiReady = Boolean(aiProviders?.providers.some((item) => item.configured));
 
   return (
     <div className="editor">
@@ -1010,6 +1085,14 @@ export function WorkflowEditorPage() {
             title="Histórico de versões do fluxo"
           >
             <History size={15} /> Histórico
+          </button>
+          <button
+            type="button"
+            className="button button--ghost button--small"
+            onClick={openGenerator}
+            title="Gerar um fluxo a partir de uma descrição"
+          >
+            <Sparkles size={15} /> Gerar com IA
           </button>
           <button
             type="button"
@@ -1357,14 +1440,14 @@ export function WorkflowEditorPage() {
               type="button"
               className="button button--primary"
               onClick={() => void rotateSecret()}
-              disabled={rotating || !webhook?.configured}
+              disabled={rotating || !webhook?.node_id}
             >
               {rotating ? <Loader2 size={16} className="spin" /> : <RefreshCw size={16} />} Rotacionar segredo
             </button>
           </>
         }
       >
-        {webhook?.configured ? (
+        {webhook?.node_id ? (
           <div className="form-stack">
             <div className="webhook-box">
               <span className="muted">Requisição</span>
@@ -1482,6 +1565,80 @@ export function WorkflowEditorPage() {
               placeholder="O que este fluxo resolve?"
             />
           </label>
+        </div>
+      </Modal>
+
+      <Modal
+        open={aiOpen}
+        title="Gerar fluxo com IA"
+        description="A IA propõe o grafo; nada é salvo até você revisar e confirmar."
+        onClose={() => setAiOpen(false)}
+        footer={
+          <>
+            <button type="button" className="button button--ghost" onClick={() => setAiOpen(false)}>
+              Cancelar
+            </button>
+            <button
+              type="button"
+              className="button button--primary"
+              onClick={() => void generateGraph()}
+              disabled={aiBusy || !aiReady || aiPrompt.trim().length < 3 || !aiProvider}
+            >
+              {aiBusy ? <Loader2 size={16} className="spin" /> : <Sparkles size={16} />} Gerar fluxo
+            </button>
+          </>
+        }
+      >
+        <div className="form-stack">
+          {aiError ? <div className="alert alert--error">{aiError}</div> : null}
+          <label className="field">
+            <span>Descreva a automação</span>
+            <textarea
+              rows={4}
+              maxLength={2000}
+              value={aiPrompt}
+              placeholder="Quando chegar um lead no webhook, avalie o plano com IA e notifique o time comercial."
+              onChange={(event) => setAiPrompt(event.target.value)}
+            />
+          </label>
+          {!aiProviders ? (
+            <p className="inspector-hint">Carregando provedores…</p>
+          ) : !aiReady ? (
+            <p className="inspector-hint">
+              Nenhum provedor de IA configurado. Defina a chave no ambiente (por exemplo,
+              <span className="mono"> GEMINI_API_KEY</span>) para habilitar a geração.
+            </p>
+          ) : (
+            <>
+              <label className="field">
+                <span>Provedor</span>
+                <select value={aiProvider} onChange={(event) => chooseProvider(event.target.value)}>
+                  {aiProviders.providers.map((provider) => (
+                    <option key={provider.name} value={provider.name}>
+                      {provider.label}
+                      {provider.configured ? "" : " (sem chave)"}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="field">
+                <span>Modelo</span>
+                <select value={aiModel} onChange={(event) => setAiModel(event.target.value)}>
+                  {aiModels.length === 0 ? <option value={aiModel}>{aiModel || "padrão"}</option> : null}
+                  {aiModels.map((model) => (
+                    <option key={model} value={model}>
+                      {model}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </>
+          )}
+          {nodes.length > 0 ? (
+            <p className="inspector-hint">
+              O grafo atual ({nodes.length} nós) será substituído ao gerar. Salve só depois de revisar.
+            </p>
+          ) : null}
         </div>
       </Modal>
     </div>
