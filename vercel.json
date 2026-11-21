@@ -1,0 +1,18 @@
+{
+  "framework": "python",
+  "pythonVersion": "3.13.1",
+  "buildCommand": "pip install -r requirements.txt",
+  "installCommand": "pip install -r requirements.txt",
+  "functions": "backend/app/**/*.py",
+  "routes": [],
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        {"key": "X-Content-Type-Options", "value": "nosniff"},
+        {"key": "X-Frame-Options", "value": "SAMEORIGIN"},
+        {"key": "X-XSS-Protection", "value": "1; mode=block"}
+      ]
+    }
+  ]
+}
