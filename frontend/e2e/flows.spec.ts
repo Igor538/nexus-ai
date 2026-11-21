@@ -71,7 +71,7 @@ test("registra, cria workflow, gera versão e restaura snapshot", async ({ page 
   await expect(page.getByText(/restaurada como v\d+/)).toBeVisible();
 });
 
-test("recupera senha pelo token de desenvolvimento e entra com a nova senha", async ({ page, request }) => {
+test("solicita código de recuperação e abre a tela de redefinição", async ({ page, request }) => {
   const email = uniqueEmail("reset");
   const register = await request.post("/api/v1/auth/register", {
     data: { name: "Reset E2E", email, password: REGISTER_PASSWORD },
@@ -81,22 +81,16 @@ test("recupera senha pelo token de desenvolvimento e entra com a nova senha", as
   await page.goto("/login");
   await page.getByRole("link", { name: "Esqueci minha senha" }).click();
   await page.getByPlaceholder("voce@empresa.com").fill(email);
-  await page.getByRole("button", { name: /Enviar instruções/ }).click();
-  await expect(page.getByText("Token de desenvolvimento", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: /Enviar código/ }).click();
+  await expect(
+    page.getByText("Se o e-mail existir, enviaremos instruções de recuperação."),
+  ).toBeVisible();
 
-  await page.getByRole("link", { name: /Redefinir agora/ }).click();
-  await expect(page).toHaveURL(/\/reset-password\?token=/);
-  const newPassword = "NovaSenha9876";
-  await page.getByLabel("Nova senha", { exact: true }).fill(newPassword);
-  await page.getByLabel("Confirmar senha", { exact: true }).fill(newPassword);
-  await page.getByRole("button", { name: /Redefinir senha/ }).click();
-  await expect(page.getByText("Senha redefinida com sucesso.")).toBeVisible();
-
-  await page.getByRole("link", { name: /Entrar com a nova senha/ }).click();
-  await page.getByPlaceholder("voce@empresa.com").fill(email);
-  await page.getByPlaceholder("Sua senha").fill(newPassword);
-  await page.getByRole("button", { name: /^Entrar$/ }).click();
-  await expect(page.getByRole("heading", { name: "Suas automações, em movimento." })).toBeVisible();
+  await page.getByRole("link", { name: /Inserir código/ }).click();
+  await expect(page).toHaveURL(/\/reset-password$/);
+  await expect(page.getByLabel("E-mail", { exact: true })).toHaveValue(email);
+  await expect(page.getByLabel("Código de verificação", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("Nova senha", { exact: true })).toBeVisible();
 });
 
 test("configura webhook, rotaciona o segredo e agenda a execução", async ({ page, request }) => {

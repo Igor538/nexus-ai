@@ -61,6 +61,15 @@ def generate_secret(length: int = 32) -> str:
     return secrets.token_urlsafe(length)
 
 
+def generate_reset_code() -> str:
+    return f"{secrets.randbelow(1_000_000):06d}"
+
+
+def hash_reset_code(salt: str, code: str) -> str:
+    message = f"{salt}:{code}".encode("utf-8")
+    return hmac.new(SECRET_KEY.encode("utf-8"), message, hashlib.sha256).hexdigest()
+
+
 def constant_time_compare(left: str, right: str) -> bool:
     return hmac.compare_digest(left.encode("utf-8"), right.encode("utf-8"))
 

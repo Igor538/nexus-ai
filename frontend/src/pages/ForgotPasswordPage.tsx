@@ -8,7 +8,7 @@ export function ForgotPasswordPage() {
   const [email, setEmail] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [result, setResult] = useState<{ detail: string; dev_token?: string } | null>(null);
+  const [result, setResult] = useState<{ detail: string } | null>(null);
 
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
@@ -30,24 +30,20 @@ export function ForgotPasswordPage() {
           <span className="eyebrow">Recuperação de acesso</span>
           <h2>Esqueceu a senha?</h2>
           <p className="muted">
-            Informe o e-mail cadastrado e enviaremos um link para criar uma nova senha.
+            Informe o e-mail cadastrado e enviaremos um código de verificação para criar uma
+            nova senha.
           </p>
 
           {result ? (
             <div className="form-stack">
               <p className="form-success">{result.detail}</p>
-              {result.dev_token ? (
-                <div className="auth__note">
-                  <span>Token de desenvolvimento</span>
-                  <code>{result.dev_token}</code>
-                  <Link
-                    className="button button--primary button--block"
-                    to={`/reset-password?token=${encodeURIComponent(result.dev_token)}`}
-                  >
-                    Redefinir agora <ArrowRight size={17} />
-                  </Link>
-                </div>
-              ) : null}
+              <Link
+                className="button button--primary button--block"
+                to="/reset-password"
+                state={{ email: email.trim() }}
+              >
+                Inserir código <ArrowRight size={17} />
+              </Link>
               <Link className="button button--ghost button--block" to="/login">
                 <ArrowLeft size={17} /> Voltar ao login
               </Link>
@@ -77,7 +73,7 @@ export function ForgotPasswordPage() {
                 disabled={busy}
               >
                 {busy ? <Loader2 size={17} className="spin" /> : null}
-                Enviar instruções
+                Enviar código
                 {!busy ? <ArrowRight size={17} /> : null}
               </button>
             </form>

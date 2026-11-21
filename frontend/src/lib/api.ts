@@ -94,14 +94,14 @@ export const api = {
       body: { current_password, new_password },
     }),
   forgotPassword: (email: string) =>
-    request<{ detail: string; dev_token?: string }>("/auth/forgot-password", {
+    request<{ detail: string }>("/auth/forgot-password", {
       method: "POST",
       body: { email },
     }),
-  resetPassword: (token: string, new_password: string) =>
+  resetPassword: (email: string, code: string, new_password: string) =>
     request<{ detail: string }>("/auth/reset-password", {
       method: "POST",
-      body: { token, new_password },
+      body: { email, code, new_password },
     }),
 
 

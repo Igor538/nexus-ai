@@ -5,20 +5,22 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, Request, status
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user
 from app.core.config import settings
 from app.core.database import get_db
-from app.core.errors import ConflictError, NotFoundError, PermissionDeniedError, ValidationError
+from app.core.errors import ConflictError, PermissionDeniedError, ValidationError
 from app.core.rate_limit import limiter
 from app.core.security import (
+    constant_time_compare,
     create_access_token,
+    generate_reset_code,
     generate_secret,
     hash_password,
-    hash_token,
+    hash_reset_code,
     verify_password,
 )
 from app.models.password_reset import PasswordResetToken
@@ -33,7 +35,8 @@ from app.schemas.user import (
     UserResponse,
     UserUpdate,
 )
-from app.services.mailer import email_configured, send_email
+from app.services.email_templates import password_reset_code_email
+from app.services.mailer import send_email
 
 router = APIRouter()
 
@@ -145,50 +148,74 @@ def forgot_password(
     if user is None:
         return response
 
-    token = generate_secret(32)
+    now = datetime.now(timezone.utc)
+    code = generate_reset_code()
+    salt = generate_secret(16)
+    db.execute(
+        update(PasswordResetToken)
+        .where(
+            PasswordResetToken.user_id == user.id,
+            PasswordResetToken.used_at.is_(None),
+        )
+        .values(used_at=now)
+    )
     reset = PasswordResetToken(
         user_id=user.id,
-        token_hash=hash_token(token),
-        expires_at=datetime.now(timezone.utc)
-        + timedelta(minutes=settings.password_reset_expire_minutes),
+        token_hash=f"{salt}:{hash_reset_code(salt, code)}",
+        expires_at=now + timedelta(minutes=settings.password_reset_expire_minutes),
     )
     db.add(reset)
     db.commit()
 
-    reset_url = f"{settings.frontend_url.rstrip('/')}/reset-password?token={token}"
-    delivered = send_email(
-        to=user.email,
-        subject="Nexus AI — redefinição de senha",
-        text=(
-            "Recebemos um pedido para redefinir sua senha.\n\n"
-            f"Acesse o link (válido por {settings.password_reset_expire_minutes} minutos):\n"
-            f"{reset_url}\n\nSe não foi você, ignore este e-mail."
-        ),
+    content = password_reset_code_email(
+        code=code,
+        expire_minutes=settings.password_reset_expire_minutes,
+        app_name=settings.app_name,
     )
-    if not delivered and not settings.is_production and not email_configured():
-        response["dev_token"] = token
-        response["detail"] = (
-            "SMTP não configurado: use o token de desenvolvimento para redefinir a senha."
-        )
+    send_email(
+        to=user.email,
+        subject=content["subject"],
+        text=content["text"],
+        html=content["html"],
+    )
     return response
 
 
 @router.post("/reset-password")
-def reset_password(payload: PasswordResetConfirm, db: Session = Depends(get_db)):
-    token_hash = hash_token(payload.token)
-    reset = db.scalar(
-        select(PasswordResetToken).where(PasswordResetToken.token_hash == token_hash)
+def reset_password(
+    payload: PasswordResetConfirm, request: Request, db: Session = Depends(get_db)
+):
+    limiter.hit(
+        "auth:reset-password", _client_ip(request), settings.auth_rate_limit_per_minute
     )
+    email = str(payload.email).lower().strip()
+    user = db.scalar(select(User).where(User.email == email))
     now = datetime.now(timezone.utc)
-    expires_at = reset.expires_at if reset is not None else None
-    if expires_at is not None and expires_at.tzinfo is None:
-        expires_at = expires_at.replace(tzinfo=timezone.utc)
-    if reset is None or reset.used_at is not None or expires_at < now:
-        raise ValidationError("Token inválido ou expirado.")
-
-    user = db.get(User, reset.user_id)
-    if user is None:
-        raise NotFoundError("Usuário não encontrado.")
+    reset = None
+    if user is not None:
+        candidates = db.scalars(
+            select(PasswordResetToken)
+            .where(
+                PasswordResetToken.user_id == user.id,
+                PasswordResetToken.used_at.is_(None),
+            )
+            .order_by(PasswordResetToken.created_at.desc())
+        ).all()
+        for candidate in candidates:
+            expires_at = candidate.expires_at
+            if expires_at.tzinfo is None:
+                expires_at = expires_at.replace(tzinfo=timezone.utc)
+            if expires_at < now:
+                continue
+            try:
+                salt, stored = candidate.token_hash.split(":", 1)
+            except ValueError:
+                continue
+            if constant_time_compare(stored, hash_reset_code(salt, payload.code)):
+                reset = candidate
+                break
+    if reset is None or user is None:
+        raise ValidationError("Código inválido ou expirado.")
 
     user.hashed_password = hash_password(payload.new_password)
     reset.used_at = now

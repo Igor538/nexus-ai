@@ -26,7 +26,7 @@ Atualizado após a rodada de finalização. Legenda: `[x]` concluído e verifica
 - [x] Entrypoints (`main.tsx`, `App.tsx`), rotas protegidas e fallback.
 - [x] Design system completo em `styles.css` (tokens, layout, tabelas, modais, toasts, editor, responsivo).
 - [x] Shell com navegação, topbar, busca e notificações.
-- [x] Login, cadastro, sessão persistida e recuperação de senha (`/forgot-password`, `/reset-password`, token de desenvolvimento sem SMTP).
+- [x] Login, cadastro, sessão persistida e recuperação de senha (`/forgot-password`, `/reset-password`, código de 6 dígitos por SMTP).
 - [x] Dashboard com métricas e atividade.
 - [x] Lista de workflows com busca, filtros, criação, duplicação, ativação e exclusão.
 - [x] Editor React Flow: paleta, conexões, inspetor dinâmico por schema, `logic_switch`, validação, execução, webhook, auto-layout, dirty state e atalhos.

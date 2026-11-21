@@ -106,9 +106,6 @@ export function AppShell() {
     <div className="shell">
       <aside className={`rail ${menuOpen ? "rail--open" : ""}`}>
         <div className="rail__brand">
-          <span className="logo-mark" aria-hidden="true">
-            N
-          </span>
           <div>
             <strong>Nexus</strong>
             <span>Automação com IA</span>

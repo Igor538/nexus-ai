@@ -33,7 +33,7 @@ describe("api client", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     await api.forgotPassword("pessoa@nexus.test");
-    await api.resetPassword("token-de-recuperacao", "NovaSenha123!");
+    await api.resetPassword("pessoa@nexus.test", "123456", "NovaSenha123!");
 
     const [forgotUrl, forgotInit] = fetchMock.mock.calls[0];
     expect(forgotUrl).toBe("/api/v1/auth/forgot-password");
@@ -43,7 +43,8 @@ describe("api client", () => {
     const [resetUrl, resetInit] = fetchMock.mock.calls[1];
     expect(resetUrl).toBe("/api/v1/auth/reset-password");
     expect(JSON.parse(resetInit.body)).toEqual({
-      token: "token-de-recuperacao",
+      email: "pessoa@nexus.test",
+      code: "123456",
       new_password: "NovaSenha123!",
     });
   });

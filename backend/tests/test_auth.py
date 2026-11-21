@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import uuid
 
 from conftest import API
@@ -75,16 +76,36 @@ def test_me_profile_and_password_change(client):
     )
 
 
-def test_password_reset_with_dev_token(client):
+def test_password_reset_with_code(client, monkeypatch):
     email, password, _ = _register(client)
+    sent: dict[str, str] = {}
+
+    def fake_send_email(
+        *, to: str, subject: str, text: str, html: str | None = None
+    ) -> bool:
+        sent.update({"to": to, "subject": subject, "text": text, "html": html or ""})
+        return True
+
+    monkeypatch.setattr("app.api.auth.send_email", fake_send_email)
+
     forgot = client.post(f"{API}/auth/forgot-password", json={"email": email})
     assert forgot.status_code == 200
-    token = forgot.json().get("dev_token")
-    assert token
+    assert "dev_token" not in forgot.json()
+    assert sent["to"] == email
+    match = re.search(r"\b(\d{6})\b", sent["text"])
+    assert match
+    code = match.group(1)
+
+    wrong_code = "000000" if code != "000000" else "111111"
+    wrong = client.post(
+        f"{API}/auth/reset-password",
+        json={"email": email, "code": wrong_code, "new_password": "Redefinida789!"},
+    )
+    assert wrong.status_code in (400, 422)
 
     reset = client.post(
         f"{API}/auth/reset-password",
-        json={"token": token, "new_password": "Redefinida789!"},
+        json={"email": email, "code": code, "new_password": "Redefinida789!"},
     )
     assert reset.status_code == 200
 
@@ -96,7 +117,7 @@ def test_password_reset_with_dev_token(client):
     )
     repeated = client.post(
         f"{API}/auth/reset-password",
-        json={"token": token, "new_password": "OutraSenha000!"},
+        json={"email": email, "code": code, "new_password": "OutraSenha000!"},
     )
     assert repeated.status_code == 422 or repeated.status_code == 400
 

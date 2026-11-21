@@ -55,7 +55,7 @@ Webhooks: cada workflow tem token e segredo cifrado. A rota pública valida `x-w
 - `App.tsx`: rotas protegidas por `RequireAuth`; `AppShell` compartilha rail de navegação, topbar, notificações e busca de workflows.
 - `lib/api.ts`: cliente `fetch` com `API_BASE` (`VITE_API_URL` ou `/api/v1`), `ApiError` tipado e tratamento global de 401 (limpa sessão e redireciona para `/login`).
 - `lib/types.ts`: contratos espelhando os schemas Pydantic; `lib/utils.ts`: formatação, labels e mensagens.
-- `pages/AuthPage.tsx`, `ForgotPasswordPage.tsx` e `ResetPasswordPage.tsx`: login/cadastro e recuperação de senha (link por e-mail ou token de desenvolvimento quando não há SMTP).
+- `pages/AuthPage.tsx`, `ForgotPasswordPage.tsx` e `ResetPasswordPage.tsx`: login/cadastro e recuperação de senha (código de 6 dígitos enviado por e-mail).
 - `pages/WorkflowEditorPage.tsx`: React Flow com nó customizado (`nexus`), handles por output, paleta filtrável pelo catálogo da API, inspetor gerado a partir de `config_schema` (inclui `$defs`, enums, booleanos, listas e JSON), editor de casos do `logic_switch`, validação, ativação, execução, webhook (URL/segredo/rotação), geração de fluxo por IA (prompt + provedor/modelo), organização automática do grafo e proteção contra sair com alterações não salvas.
 - Estilos: `styles.css` com tokens (fundo escuro, âmbar/teal/violeta/coral), tipografia Bricolage Grotesque + Inter Tight + IBM Plex Mono, layout responsivo e overrides do React Flow.
 

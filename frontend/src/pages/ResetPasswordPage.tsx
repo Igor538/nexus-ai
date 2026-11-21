@@ -1,12 +1,23 @@
 import { useState, type FormEvent } from "react";
-import { Link, useSearchParams } from "react-router-dom";
-import { ArrowLeft, ArrowRight, CheckCircle2, Loader2, LockKeyhole } from "lucide-react";
+import { Link, useLocation } from "react-router-dom";
+import {
+  ArrowLeft,
+  ArrowRight,
+  CheckCircle2,
+  KeyRound,
+  Loader2,
+  LockKeyhole,
+  Mail,
+} from "lucide-react";
 import { api } from "../lib/api";
 import { getErrorMessage } from "../lib/utils";
 
 export function ResetPasswordPage() {
-  const [searchParams] = useSearchParams();
-  const token = searchParams.get("token") ?? "";
+  const location = useLocation();
+  const [email, setEmail] = useState(
+    (location.state as { email?: string } | null)?.email ?? "",
+  );
+  const [code, setCode] = useState("");
   const [password, setPassword] = useState("");
   const [confirmation, setConfirmation] = useState("");
   const [busy, setBusy] = useState(false);
@@ -22,7 +33,7 @@ export function ResetPasswordPage() {
     }
     setBusy(true);
     try {
-      await api.resetPassword(token, password);
+      await api.resetPassword(email.trim(), code.trim(), password);
       setDone(true);
     } catch (err) {
       setError(getErrorMessage(err));
@@ -37,16 +48,12 @@ export function ResetPasswordPage() {
         <div className="auth__form-wrap">
           <span className="eyebrow">Nova senha</span>
           <h2>Redefinir senha</h2>
-          <p className="muted">Escolha uma senha com letras e números, de 8 a 128 caracteres.</p>
+          <p className="muted">
+            Informe o código que enviamos por e-mail e escolha uma nova senha com letras e
+            números, de 8 a 128 caracteres.
+          </p>
 
-          {!token ? (
-            <div className="form-stack">
-              <p className="form-error">Link inválido ou incompleto. Solicite um novo link.</p>
-              <Link className="button button--primary button--block" to="/forgot-password">
-                Solicitar novo link <ArrowRight size={17} />
-              </Link>
-            </div>
-          ) : done ? (
+          {done ? (
             <div className="form-stack">
               <p className="form-success">
                 <CheckCircle2 size={18} /> Senha redefinida com sucesso.
@@ -57,6 +64,40 @@ export function ResetPasswordPage() {
             </div>
           ) : (
             <form onSubmit={onSubmit} className="form-stack">
+              <label className="field">
+                <span>E-mail</span>
+                <span className="input-with-icon">
+                  <Mail size={16} />
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={(event) => setEmail(event.target.value)}
+                    placeholder="voce@empresa.com"
+                    required
+                    autoComplete="email"
+                  />
+                </span>
+              </label>
+
+              <label className="field">
+                <span>Código de verificação</span>
+                <span className="input-with-icon">
+                  <KeyRound size={16} />
+                  <input
+                    type="text"
+                    value={code}
+                    onChange={(event) => setCode(event.target.value.replace(/\D/g, ""))}
+                    placeholder="000000"
+                    inputMode="numeric"
+                    pattern="[0-9]{6}"
+                    minLength={6}
+                    maxLength={6}
+                    required
+                    autoComplete="one-time-code"
+                  />
+                </span>
+              </label>
+
               <label className="field">
                 <span>Nova senha</span>
                 <span className="input-with-icon">
@@ -107,6 +148,8 @@ export function ResetPasswordPage() {
 
           {!done ? (
             <p className="auth__switch">
+              <Link to="/forgot-password">Solicitar novo código</Link>
+              <span className="muted"> · </span>
               <Link to="/login">
                 <ArrowLeft size={14} /> Voltar ao login
               </Link>
