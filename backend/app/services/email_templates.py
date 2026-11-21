@@ -47,6 +47,8 @@ def password_reset_code_email(
         "style=\"padding:18px 32px 28px 32px;font-family:'Segoe UI',Arial,sans-serif;"
         "font-size:12px;line-height:1.6;color:#6f6880;\""
     )
+    _reset_text = "Recebemos um pedido para redefinir a senha da sua conta. Use o código abaixo no site para criar uma nova senha."
+    _expire_text = "Este código é válido por {expire_minutes} minutos. Se não foi você, ignore este e-mail — sua senha continua a mesma."
     html = f"""<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -64,11 +66,11 @@ def password_reset_code_email(
 <div {_app_name_style}>{app_name}</div>
 </td></tr>
 <tr><td {_header_style}><h1>Redefinição de senha</h1>
-<p {_paragraph_style}>Recebemos um pedido para redefinir a senha da sua conta. Use o código abaixo no site para criar uma nova senha.</p>
+<p {_paragraph_style}>{_reset_text}</p>  # noqa: E501
 </td></tr>
 <tr><td {_code_box_style}>{code}</div>
 </td></tr>
-<tr><td {_text_style}>Este código é válido por <strong>{expire_minutes} minutos</strong>. Se não foi você, ignore este e-mail — sua senha continua a mesma.
+<tr><td {_text_style}>Este código é válido por <strong>{expire_minutes} minutos</strong>. Se não foi você, ignore este e-mail — sua senha continua a mesma.  # noqa: E501
 </td></tr>
 <tr><td {_footer_style}>Por segurança, este código expira automaticamente e só pode ser usado uma vez.
 </td></tr>
