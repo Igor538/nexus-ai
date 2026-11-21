@@ -142,11 +142,8 @@ def forgot_password(
     email = str(payload.email).lower().strip()
     user = db.scalar(select(User).where(User.email == email))
 
-    response: dict[str, str] = {
-        "detail": "Se o e-mail existir, enviaremos instruções de recuperação."
-    }
     if user is None:
-        return response
+        return {"detail": "Se o e-mail existir, enviaremos um código de 6 dígitos."}
 
     now = datetime.now(timezone.utc)
     code = generate_reset_code()
@@ -178,7 +175,7 @@ def forgot_password(
         text=content["text"],
         html=content["html"],
     )
-    return response
+    return {"detail": "Um código de 6 dígitos foi enviado para o seu e-mail."}
 
 
 @router.post("/reset-password")

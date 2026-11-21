@@ -82,14 +82,17 @@ test("solicita código de recuperação e abre a tela de redefinição", async (
   await page.getByRole("link", { name: "Esqueci minha senha" }).click();
   await page.getByPlaceholder("voce@empresa.com").fill(email);
   await page.getByRole("button", { name: /Enviar código/ }).click();
-  await expect(
-    page.getByText("Se o e-mail existir, enviaremos instruções de recuperação."),
-  ).toBeVisible();
+  await expect(page.locator(".form-success")).toBeVisible();
 
   await page.getByRole("link", { name: /Inserir código/ }).click();
   await expect(page).toHaveURL(/\/reset-password$/);
   await expect(page.getByLabel("E-mail", { exact: true })).toHaveValue(email);
-  await expect(page.getByLabel("Código de verificação", { exact: true })).toBeVisible();
+  await expect(
+    page.getByLabel("Código de verificação", { exact: true }),
+  ).toHaveAttribute("pattern", "[0-9]{6}");
+  await expect(
+    page.getByLabel("Código de verificação", { exact: true }),
+  ).toHaveAttribute("inputMode", "numeric");
   await expect(page.getByLabel("Nova senha", { exact: true })).toBeVisible();
 });
 
