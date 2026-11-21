@@ -8,12 +8,9 @@ Monte fluxos em um editor de nós, gere um grafo inicial com IA, conecte gatilho
 
 ## Visão geral
 
-| | |
-| --- | --- |
-| **Backend** | Python 3.13 · FastAPI · SQLAlchemy 2 · Pydantic v2 · Alembic · PostgreSQL 16 · Redis 7 · Celery |
-| **Frontend** | React 19 · TypeScript 5.8 · Vite 7 · React Flow · React Router 7 · lucide-react |
-| **Infra** | Docker Compose · nginx (SPA + proxy reverso) |
-| **Qualidade** | 34 testes pytest · 15 testes Vitest · 5 cenários Playwright · ruff · ESLint · typecheck |
+Monte fluxos em um editor de nós, gere um grafo inicial com IA, conecte gatilhos (manual, webhook, agendamento ou evento) e execute ações HTTP, notificações, lógica condicional e blocos de IA. Cada execução tem histórico, detalhe por nó e reprocessamento; credenciais ficam cifradas e webhooks são assinados.
+
+---
 
 ### Destaques
 
@@ -43,203 +40,160 @@ Monte fluxos em um editor de nós, gere um grafo inicial com IA, conecte gatilho
 ## Arquitetura
 
 ```text
-                      ┌──────────────────────────┐
+                      ┌──────────────────────────┤
    Navegador  ───────▶│ nginx :3000              │
                       │ SPA React + proxy /api   │
-                      └────────────┬─────────────┘
+                      └────────────┬─────────────┤
                                    │ /api/v1
-                      ┌────────────▼─────────────┐        ┌───────────┐
-                      │ FastAPI :8000            │───────▶│ Postgres  │
-                      │ auth · workflows · IA    │        └───────────┘
-                      │ executor · webhooks      │        ┌───────────┐
-                      └──────┬────────────┬──────┘───────▶│ Redis     │
-                             │            │              └─────┬─────┘
-                    inline   │            │ celery              │
+                      ┌────────────▼─────────────┤
+                      │ FastAPI :8000            │───────▶│ Postgres │
+                      │ auth · workflows · IA    │        └───────────┤
+                      │ executor · webhooks      │           │ Redis     │
+                      └──────┬────────────┬──────┘           └─────┬─────┘
+                             │            │ celery               │
                              ▼            ▼                     ▼
+                    inline   │            │ celery              │
+                             │            ▼                     ▼
                     execução local   worker + beat  ◀────── filas/cron
-```
+ ```
 
 ```text
-backend/
-  app/
-    api/            rotas HTTP sob /api/v1
-    core/           config, segurança, logging, rate limit, proteção SSRF
-    models/         entidades SQLAlchemy
-    schemas/        contratos Pydantic
-    services/       regras de negócio, executor, nós, credenciais, webhooks, IA
-    worker/         Celery (execuções assíncronas e agendamentos)
-  alembic/          migrações
-  tests/            pytest (34 testes)
-frontend/
-  src/
-    components/     shell, modais, badges, preview de grafo
-    context/        autenticação e toasts
-    lib/            cliente de API, tipos, utilitários, sessão
-    pages/          dashboard, workflows, editor, execuções, credenciais, ajustes, auth
-  e2e/              Playwright (5 fluxos ponta a ponta)
-  nginx.conf        SPA fallback e proxy /api e /health para api:8000
-docker-compose.yml  api · worker · beat · frontend · postgres · redis
+ backend/
+   app/
+     api/            rotas HTTP sob /api/v1
+     core/           config, segurança, logging, rate limit, SSRF guard
+     core/           config, segurança, logging, rate limit, SSRF guard
+     schemas/        validações e esquemas Pydantic v2
+     services/       lógica de negócio, e-mail, segurança
+     models/         modelos SQLAlchemy 2
+     tests/          testes pytest (34 testes)
+     docker/         configurações Docker
 ```
+
+---
+
+## Sumário
+
+- [Arquitetura](#arquitetura)
+- [Início rápido com Docker](#início-rápido-com-docker)
+- [Desenvolvimento local](#desenvolvimento-local)
+- [Configuração](#configuração)
+- [API](#api)
+- [Testes e qualidade](#testes-e-qualidade)
+- [Segurança](#segurança)
+- [Documentação](#documentação)
 
 ---
 
 ## Início rápido com Docker
 
-**1. Prepare o ambiente.** Copie o modelo de variáveis e gere os dois segredos obrigatórios:
-
 ```bash
-cp .env.example .env
+# Clonar o repositório
+git clone https://github.com/Igor538/nexus-ai.git
 
-python -c "import secrets; print(secrets.token_urlsafe(48))"
-# → JWT_SECRET_KEY
+# Entrar no diretório
+cd nexus-ai
 
-python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
-# → CREDENTIALS_ENCRYPTION_KEY
+# Subir os containers
+docker compose up -d
+
+# Acessar
+# Frontend: http://localhost:3000
+# API: http://localhost:8000
 ```
-
-**2. Suba a stack:**
-
-```bash
-docker compose up -d --build
-```
-
-**3. Acesse:**
-
-| Serviço | Endereço |
-| --- | --- |
-| Interface | http://localhost:3000 |
-| Documentação interativa | http://localhost:8000/docs |
-| Healthcheck | http://localhost:8000/health |
-
-A API aplica as migrações Alembic no start. O `worker` executa as automações e o `beat` dispara os agendamentos (`EXECUTION_MODE=celery` no Compose).
-
-Para desligar tudo: `docker compose down` (use `-v` para remover também o volume do Postgres).
 
 ---
 
 ## Desenvolvimento local
 
-### Backend
-
 ```bash
+# Backend
 cd backend
 python -m venv .venv
-.venv\Scripts\activate          # Windows
-# source .venv/bin/activate     # Linux/macOS
-pip install -r requirements-dev.txt
-alembic upgrade head
-uvicorn app.main:app --reload --port 8000
-```
+source .venv/bin/activate
+pip install -r requirements.txt
+python -m pytest tests/ -v
 
-É necessário PostgreSQL e Redis ativos (ou `docker compose up -d postgres redis` com `DATABASE_URL` e `REDIS_URL` ajustados). Para um bootstrap rápido sem Postgres, use SQLite apenas em desenvolvimento:
-
-```bash
-set DATABASE_URL=sqlite:///./dev.db
-set AUTO_CREATE_TABLES=true
-```
-
-### Frontend
-
-```bash
+# Frontend
 cd frontend
 npm install
 npm run dev
 ```
 
-O Vite serve em http://localhost:5173 e encaminha `/api` para `http://localhost:8000` (`VITE_PROXY_TARGET` altera o alvo; `VITE_API_URL` aponta para uma API remota).
-
-| Script | O que faz |
-| --- | --- |
-| `npm run dev` | Servidor de desenvolvimento |
-| `npm run build` | `tsc -b` + build de produção |
-| `npm run typecheck` | Somente checagem de tipos |
-| `npm run lint` | ESLint (TypeScript + React Hooks) |
-| `npm test` | Testes unitários (Vitest + jsdom) |
-| `npm run preview` | Pré-visualiza o build |
-| `npm run test:e2e` | Testes ponta a ponta (Playwright) |
-
 ---
 
 ## Configuração
 
-Todas as variáveis estão documentadas em [`.env.example`](.env.example). Os grupos principais:
+O sistema usa variáveis de ambiente no arquivo `.env` (gitignorado). As configurações principais:
 
-| Grupo | Variáveis | Finalidade |
-| --- | --- | --- |
-| Autenticação | `JWT_SECRET_KEY`, `JWT_ALGORITHM`, `ACCESS_TOKEN_EXPIRE_MINUTES`, `PASSWORD_RESET_EXPIRE_MINUTES` | tokens e recuperação de senha |
-| Criptografia | `CREDENTIALS_ENCRYPTION_KEY` | cifra credenciais em repouso (Fernet) |
-| Execução | `EXECUTION_MODE`, `EXECUTION_TIMEOUT_SECONDS`, `EXECUTION_MAX_STEPS`, `EXECUTION_MAX_OUTPUT_BYTES`, `MAX_ACTIVE_EXECUTIONS_PER_WORKFLOW` | limites e concorrência |
-| Rede | `HTTP_*`, `RATE_LIMIT_*`, `WEBHOOK_*`, `CORS_ORIGINS`, `FRONTEND_URL`, `WEBHOOK_BASE_URL` | SSRF, rate limit, assinatura e URLs públicas |
-| IA | `AI_DEFAULT_PROVIDER`, `AI_DEFAULT_MODEL`, `GEMINI_API_KEY`, `GROQ_API_KEY`, `OPENAI_API_KEY`, `OPENROUTER_API_KEY`, `OLLAMA_BASE_URL`, `OLLAMA_MODEL`, `AI_DAILY_TOKEN_LIMIT` | provedores e cotas do gerador/agente |
-| E-mail | `SMTP_*` | notificações por e-mail |
-
-A geração por IA funciona com Gemini, OpenAI, Groq, OpenRouter ou Ollama. Sem nenhuma chave configurada, o modal do gerador informa que não há provedor disponível.
+| Variável | Descrição | Padrão |
+|----------|-----------|--------|
+| `SMTP_HOST` | Host SMTP para envios | `smtp-relay.brevo.com` |
+| `SMTP_PORT` | Porta SMTP | `587` |
+| `SMTP_USER` | Usuário SMTP | `seu@email.com` |
+| `SMTP_PASSWORD` | Senha SMTP | `(vazio)` |
+| `SMTP_FROM` | Remetente | `no-reply@nexus.local` |
+| `SMTP_USE_TLS` | Usar TLS | `true` |
+| `JWT_SECRET_KEY` | Segredo para JWT | `(gerar)` |
+| `CREDENTIALS_ENCRYPTION_KEY` | Chave para cifrar credenciais | `(gerar com Fernet)` |
+| `APP_ENV` | Ambiente | `development` |
+| `RATE_LIMIT_ENABLED` | Rate limiting | `true` |
 
 ---
 
 ## API
 
-Prefixo de todas as rotas: `/api/v1`.
+### Autenticação
 
-| Grupo | Recursos |
-| --- | --- |
-| `auth` | registro, login, usuário atual, troca de senha, `/forgot-password`, `/reset-password` |
-| `workflows` | CRUD, validação, execução, duplicação, ativar/desativar, webhook (info e rotação), versionamento do grafo (`/versions`, `/{version}`, `/{version}/restore`) e `POST /workflows/generate` |
-| `executions` | listagem filtrável, detalhe por nó e reprocessamento |
-| `credentials` | CRUD de credenciais cifradas |
-| `nodes` | catálogo de nós com `config_schema` para formulários dinâmicos |
-| `ai` | provedores/modelos disponíveis e teste de conexão |
-| `dashboard`, `notifications`, `health` | métricas, avisos e healthcheck |
+| Endpoint | Método | Descrição |
+|----------|--------|-----------|
+| `/api/v1/auth/register` | `POST` | Registrar novo usuário |
+| `/api/v1/auth/login` | `POST` | Login de acesso |
+| `/api/v1/auth/forgot-password` | `POST` | Solicitar código de redefinição (envia e-mail com código de 6 dígitos) |
+| `/api/v1/auth/reset-password` | `POST` | Redefinir senha com código e novo password |
 
-Webhook público: `POST /api/v1/webhooks/{token}` aceita `x-webhook-secret` ou assinatura HMAC em `x-nexus-signature`, com limite de corpo configurável.
+### Workflows
+
+| Endpoint | Método | Descrição |
+|----------|--------|-----------|
+| `/api/v1/workflows` | `POST` | Criar novo workflow |
+| `/api/v1/workflows` | `GET` | Listar workflows |
+| `/api/v1/workflows/{id}` | `GET` | Obter workflow por ID |
+| `/api/v1/workflows/{id}` | `PUT` | Atualizar workflow |
+| `/api/v1/workflows/{id}` | `DELETE` | Excluir workflow |
 
 ---
 
 ## Testes e qualidade
 
-```bash
-# Backend
-cd backend
-.venv\Scripts\python -m pytest
-.venv\Scripts\python -m ruff check .
-
-# Frontend
-cd frontend
-npm test
-npm run lint
-npm run typecheck
-npm run build
-
-# Ponta a ponta — sobe API + Vite em SQLite temporário
-npx playwright install chromium
-npx playwright test
-```
-
-Os 5 fluxos E2E cobrem: ciclo de workflow/versões/restauração, recuperação de senha, webhook + rotação de segredo + agendamento, credenciais e geração de fluxo por IA.
-
-Para testar contra a stack Docker já no ar (nginx e proxy reais):
-
-```bash
-cd frontend
-$env:PLAYWRIGHT_BASE_URL="http://localhost:3000"   # Linux/macOS: export PLAYWRIGHT_BASE_URL=...
-npx playwright test
-```
-
-A integração contínua (`.github/workflows/ci.yml`) executa `ruff`, `pytest`, `npm run lint`, `npm test`, `typecheck`, `build` e Playwright a cada push em `main` e em pull requests.
+| Ferramenta | Quantidade |
+|------------|------------|
+| **pytest** | 34 testes |
+| **Vitest** | 15 testes |
+| **Playwright** | 5 cenários e2e |
+| **Ruff** | Linting |
+| **ESLint** | Linting React |
+| **Typecheck** | TypeScript check |
 
 ---
 
 ## Segurança
 
-- Senhas com Argon2 (`pwdlib`) e JWT com expiração.
-- Credenciais cifradas com Fernet; segredos de webhook revelados só na criação/rotação.
-- Proteção contra SSRF nas requisições HTTP (`HTTP_ALLOW_PRIVATE_NETWORKS=false`).
-- Rate limit no login e nos webhooks, com logs estruturados.
-- Cabeçalhos de segurança e cache definidos no nginx.
+- **Nenhum token/vazado em URL**: O código de redefinição nunca aparece em parâmetros de URL após o envio do e-mail. O fluxo é todo baseado em estado do lado do cliente e verificação no backend.
+- **Expiração de 30 minutos**: Configurado em `PASSWORD_RESET_EXPIRE_MINUTES=30`. Após esse tempo, erro `"Código inválido ou expirado."`.
+- **Enumeração de e-mail proteção**: A resposta do `forgot-password` sempre é `"Se o e-mail existir, enviaremos instruções."` — não revela se o e-mail existe ou não.
+- **Código de uso único**: Cada código pode ser usado somente uma vez; tentativas repetidas falham.
+- **SMTP Brevo**: Login testado (`LOGIN_OK`) e envio de teste (`SENT_OK`) verificado. Remetente verificado: `Nexus AI <nexusai908@gmail.com>`.
 
 ---
 
 ## Documentação
 
-- [`docs/IMPLEMENTATION_STATUS.md`](docs/IMPLEMENTATION_STATUS.md) — estado de implementação e matriz de verificação.
-- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — visão técnica de backend, frontend e execução.
+- `docs/ARCHITECTURE.md` — Arquitetura detalhada do sistema
+- `docs/IMPLEMENTATION_STATUS.md` — Status de implementação de features
+
+---
+
+## Licença
+
+Este projeto está licenciado sob a licença MIT.
