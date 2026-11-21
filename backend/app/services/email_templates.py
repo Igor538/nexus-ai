@@ -66,16 +66,14 @@ def password_reset_code_email(
 <div {_app_name_style}>{app_name}</div>
 </td></tr>
 <tr><td {_header_style}><h1>Redefinição de senha</h1>
-<p {_paragraph_style}>{_reset_text}</p>  # noqa: E501
+<p {_paragraph_style}>{_reset_text}</p>
 </td></tr>
 <tr><td {_code_box_style}>{code}</div>
 </td></tr>
-<tr><td {_text_style}>Este código é válido por <strong>{expire_minutes} minutos</strong>. Se não foi você, ignore este e-mail — sua senha continua a mesma.  # noqa: E501
-</td></tr>
-<tr><td {_footer_style}>Por segurança, este código expira automaticamente e só pode ser usado uma vez.
+<tr><td {_text_style}>_expire_text</p>
 </td></tr>
 </table>
-<p {_footer_style}&copy; {app_name}</p>  # noqa: E501
+<p {_footer_style}&copy; {app_name}</p>
 </td></tr>
 </table>
 </body>
